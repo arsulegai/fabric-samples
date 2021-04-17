@@ -158,4 +158,66 @@ npm install
 node app.js
 ```
 
-If all goes well, it should run exactly the same as described in the "Writing Your First Application" tutorial.
+If all goes well, the program should run exactly the same as described in the "Writing Your First Application" tutorial.
+
+## Enabling TLS for chaincode and peer communication
+
+**Note:** This section is explained with an example of self-signed certificate. You may use organization hosted CA to issue the certificate and generate a key for production deployment.
+
+In the example so far, you connected the single instance of chaincode server to both the peers in `test-network`. However, if you would like to verify TLS connection of the peer nodes from the chaincode, each peer node has its own root CA certificate. Enabling TLS is made possible at runtime in the chaincode.
+
+- As a first step generate a keypair that can be used. Run these commands from the `fabric-samples/asset-transfer-basic/chaincode-external` directory.
+
+*Find instructions to install `openssl` in [openssl.org](https://www.openssl.org/)*
+
+For `org1.example.com`
+
+```
+openssl req -nodes -x509 -newkey rsa:4096 -keyout crypto/key1.pem -out crypto/cert1.pem -subj "/C=IN/ST=KA/L=Bangalore/O=example Inc/OU=Developer/CN=asset-transfer-basic.org1.example.com/emailAddress=dev@asset-transfer-basic.org1.example.com"
+```
+
+For `org2.example.com`
+
+```
+openssl req -nodes -x509 -newkey rsa:4096 -keyout crypto/key2.pem -out crypto/cert2.pem -subj "/C=IN/ST=KA/L=Bangalore/O=example Inc/OU=Developer/CN=asset-transfer-basic.org2.example.com/emailAddress=dev@asset-transfer-basic.org2.example.com"
+```
+
+- Copy the CA file contents for both `org1.example.com` & `org2.example.com`
+
+```
+cp ../../test-network/organizations/peerOrganizations/org1.example.com/ca/ca.org1.example.com-cert.pem crypto/rootcert1.pem
+cp ../../test-network/organizations/peerOrganizations/org2.example.com/ca/ca.org2.example.com-cert.pem crypto/rootcert2.pem
+```
+
+- Generate a client key and cert for auth purpose. You need a key and cert generated from the CA of each organization. Peer nodes serve as clients to chaincode server.
+
+- Change the `connection.json` with the below contents. `root_cert` parameter is the root CA certificate which the chaincode server is run with. You may run below commands to get the certificate file contents as string and copy them when needed.
+
+```
+awk 'NF {sub(/\r/, ""); printf "%s\\n",$0;}' crypto/cert1.pem
+awk 'NF {sub(/\r/, ""); printf "%s\\n",$0;}' crypto/cert2.pem
+```
+
+Similarly, replace the `client_key` and the `client_cert` contents with values from the previous step.
+
+```
+{
+  "address": "asset-transfer-basic.org1.example.com:9999",
+  "dial_timeout": "10s",
+  "tls_required": true,
+  "client_auth_required": true,
+  "client_key": "-----BEGIN PRIVATE KEY----- ... -----END PRIVATE KEY-----",
+  "client_cert": "-----BEGIN CERTIFICATE---- ... -----END CERTIFICATE-----",
+  "root_cert": "-----BEGIN CERTIFICATE---- ... -----END CERTIFICATE-----"
+}
+```
+
+- Follow the instructions in [Package](#packaging-and-installing-chaincode) and [Install](#installing-the-external-chaincode) steps for each organization. Remember that chaincode server address for second organization is `asset-transfer-basic.org2.example.com:9999`.
+
+- Copy the appropriate `CHAINCODE_ID` to both [chaincode1.env](./chaincode1.env) and [chaincode2.env](./chaincode2.env) files. Bring up chaincode containers using the docker-compose command below
+
+```
+docker-compose up -f docker-compose-chaincode.yaml up --build -d
+```
+
+- Follow the instructions in [Finish Deployment](#finish-deploying-the-asset-transfer-basic-external-chaincode-) for each organization seperately.
